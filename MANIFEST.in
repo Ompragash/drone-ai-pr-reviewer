@@ -1,0 +1,15 @@
+# MANIFEST.in
+
+# Include the prompt template files
+graft src/drone_ai_pr_reviewer/prompts
+
+# Include license and readme for source distributions
+include LICENSE
+include README.md
+include requirements.txt
+
+# Exclude common unwanted files from sdist
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
+global-exclude Thumbs.db
