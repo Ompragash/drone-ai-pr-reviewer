@@ -1,0 +1,23 @@
+# requirements.txt
+
+# Core LLM interaction
+litellm >= 1.30.0 # Specify a recent version known to work well
+
+# For parsing diffs
+unidiff >= 0.7.0
+
+# For making HTTP requests (used by scm_client)
+requests >= 2.25.0
+
+# For loading .env files during local development
+python-dotenv >= 0.15.0
+
+# For matching glob patterns (exclude patterns)
+minimatch >= 0.2.0 
+
+# Optional: For robust data validation and settings management (if you choose to use it more extensively)
+# pydantic >= 2.0.0
+
+# Add any other specific SCM client libraries if you decide to use them instead of raw requests, e.g.:
+# PyGithub >= 1.55
+# python-gitlab >= 3.0.0
