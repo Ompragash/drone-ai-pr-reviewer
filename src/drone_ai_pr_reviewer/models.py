@@ -18,6 +18,7 @@ class DiffChunk:
     """
     content: str # The formatted diff content for this chunk to send to LLM
     changes: List[Dict[str, Any]] # List of line changes with line numbers and content
+    header: str # The hunk header line (e.g., @@ -1,7 +1,7 @@)
     hunk_line_mapping: Dict[int, Tuple[int, int]] = field(default_factory=dict) # Maps target line numbers to (hunk_line_number, diff_line_number)
 
 @dataclass

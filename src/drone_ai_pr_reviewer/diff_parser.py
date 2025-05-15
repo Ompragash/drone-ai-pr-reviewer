@@ -1,6 +1,7 @@
 # src/drone_ai_pr_reviewer/diff_parser.py
 import logging
 import subprocess
+import re
 from typing import List, Optional, Dict, Tuple
 from .utils.file_filter import filter_files_by_patterns
 from .models import DiffFile, DiffChunk
@@ -213,18 +214,26 @@ def parse_diff_text(
             # Store the line mapping for this hunk
             diff_file_model.hunk_line_mappings.append(current_chunk.hunk_line_mapping)
 
-            # Add the hunk to the DiffFile
+            chunk_content = str(hunk)
+            chunk_changes = [
+                {
+                    "ln": line.target_line_no if line.target_line_no else None,
+                    "ln2": line.source_line_no if line.source_line_no else None,
+                    "content": line.value
+                }
+                for line in hunk
+            ]
+
+            header = "" # Default empty header
+            header_match = re.search(r'@@ .+ @@', chunk_content)
+            if header_match:
+                header = header_match.group(0)
+
             diff_file_model.chunks.append(DiffChunk(
-                content=str(hunk),
-                changes=[
-                    {
-                        "ln": line.target_line_no if line.target_line_no else None,
-                        "ln2": line.source_line_no if line.source_line_no else None,
-                        "content": line.value
-                    }
-                    for line in hunk
-                ],
-                hunk_line_mapping=hunk_line_mapping  # Store mapping for this hunk
+                content=chunk_content,
+                changes=chunk_changes,
+                header=header,
+                hunk_line_mapping=current_chunk.hunk_line_mapping
             ))
 
         if diff_file_model.chunks: # Only add file if it has reviewable chunks
