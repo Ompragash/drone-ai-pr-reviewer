@@ -1,14 +1,9 @@
 # src/drone_ai_pr_reviewer/plugin_config.py
 import os
 from dataclasses import dataclass, field
-from typing import Optional, List
-
-# Default values for optional parameters
-DEFAULT_TEMPERATURE = 0.2
-DEFAULT_MAX_TOKENS = 700
-DEFAULT_TOP_P = 1.0
-DEFAULT_EXCLUDE_PATTERNS = ""
-DEFAULT_LOG_LEVEL = "INFO"
+from typing import Optional, Dict, Any, List
+from .models import DiffFile
+from .utils.constants import DEFAULT_TEMPERATURE, DEFAULT_MAX_TOKENS, DEFAULT_TOP_P, DEFAULT_EXCLUDE_PATTERNS, DEFAULT_LOG_LEVEL
 
 @dataclass
 class PluginConfig:
@@ -110,6 +105,7 @@ class PluginConfig:
     is_pr_opened_event: bool = False
     is_pr_synchronize_event: bool = False
 
+    diff_files: List[DiffFile] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.llm_model:

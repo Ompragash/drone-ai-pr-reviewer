@@ -1,7 +1,7 @@
 # src/drone_ai_pr_reviewer/llm_reviewer.py
 import json
 import logging
-import litellm # type: ignore
+import litellm  # type: ignore
 from string import Template
 import importlib.resources # For loading prompt from package data
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
@@ -70,8 +70,11 @@ class LLMReviewer:
             # Fallback if template substitution fails
             formatted_prompt_content = f"Review this code diff for {file_path} (PR: {pr_title}):\n{diff_chunk_content}"
 
-        # Using "system" message for instructions is often preferred.
-        messages = [{"role": "system", "content": formatted_prompt_content}]
+        # Create messages array with both system and user messages
+        messages = [
+            {"role": "system", "content": formatted_prompt_content},
+            {"role": "user", "content": "Please review the code changes above and provide specific, actionable feedback in JSON format."}
+        ]
         return messages
 
     async def get_review_for_chunk(self, file_path: str, diff_chunk_content: str) -> List[Dict[str, Any]]:
@@ -96,12 +99,19 @@ class LLMReviewer:
         kwargs_for_litellm: Dict[str, Any] = {
             "model": self.config.llm_model,
             "messages": messages,
-            "temperature": self.config.temperature,
-            "max_tokens": self.config.max_tokens,
-            "top_p": self.config.top_p,
-            # Add other common params like frequency_penalty, presence_penalty from config if defined
+            "temperature": 0.3,  # Lower temp for more focused reviews
+            "max_tokens": 2048,  # Generous limit for detailed reviews
+            "stream": False,  # We want complete responses
         }
 
+        # Common parameters for all models
+        kwargs_for_litellm = {
+            "model": self.config.llm_model,
+            "messages": messages,
+            "temperature": 0.3,  # Lower temp for more focused reviews
+        }
+
+        # Add other common params like frequency_penalty, presence_penalty from config if defined
         if self.config.llm_api_key:
             kwargs_for_litellm["api_key"] = self.config.llm_api_key
         if self.config.llm_api_base:
@@ -137,8 +147,12 @@ class LLMReviewer:
 
         llm_response_content: Optional[str] = None
         try:
-            response = await litellm.acompletion(**kwargs_for_litellm)
+            response = litellm.completion(**kwargs_for_litellm)
             
+            logger.info(f"Raw LLM response object: {response}")
+            logger.info(f"Response choices: {response.choices if hasattr(response, 'choices') else 'No choices'}")            
+            if hasattr(response, 'choices') and response.choices:
+                logger.info(f"First choice message: {response.choices[0].message if hasattr(response.choices[0], 'message') else 'No message'}")            
             if logger.isEnabledFor(logging.DEBUG):
                  logger.debug(f"Raw LLM response object: {response}")
 
@@ -154,10 +168,11 @@ class LLMReviewer:
 
             logger.debug(f"LLM response content to parse: {llm_response_content}")
             parsed_response = json.loads(llm_response_content)
-            review_data_list = parsed_response.get("reviews", [])
+            # Handle both direct reviews and wrapped in additionalProperties
+            reviews = parsed_response.get("reviews", []) or parsed_response.get("additionalProperties", {}).get("reviews", [])
             
             valid_reviews = []
-            for item in review_data_list:
+            for item in reviews:
                 if isinstance(item, dict) and "lineNumber" in item and "reviewComment" in item:
                     try:
                         item["lineNumber"] = int(str(item["lineNumber"])) # Ensure it's int

@@ -29,6 +29,10 @@ env/
 # Logs
 *.log
 
+# Local testing
+test_local.py
+.env.test
+
 # Explicitly keep these
 !*/__init__.py
 !tests/

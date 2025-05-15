@@ -244,29 +244,14 @@ def populate_ci_environment_info(config: PluginConfig, scm_client: BaseSCMClient
     logger.info(f"Determined event action: {config.ci_event_action}, Base SHA: {config.ci_base_sha}, Head SHA: {config.ci_head_sha}")
 
     # --- Repository Info ---
-    # Prioritize getting from local git, then DRONE_REPO_LINK
-    local_git_url = get_git_remote_url("origin")
-    config.ci_repo_link = local_git_url or os.getenv("DRONE_REPO_LINK")
-
-    if config.ci_repo_link:
-        try:
-            # Simplified parsing logic - this needs to be robust as discussed
-            parsed_url = urlparse(config.ci_repo_link)
-            path_segments = [segment for segment in parsed_url.path.split('/') if segment]
-            if path_segments and path_segments[-1].endswith(".git"):
-                path_segments[-1] = path_segments[-1][:-4]
-            
-            # Basic heuristic: needs more SCM-specific logic here as per previous discussion
-            if len(path_segments) >= 2:
-                # This assumes last part is repo, everything before is owner/namespace
-                config.ci_repo_name = path_segments[-1]
-                config.ci_repo_owner = "/".join(path_segments[:-1])
-                config.ci_repo_full_name = f"{config.ci_repo_owner}/{config.ci_repo_name}"
-                logger.info(f"Parsed Repo: Owner='{config.ci_repo_owner}', Name='{config.ci_repo_name}' from link.")
-            else:
-                logger.error(f"Could not parse owner/repo from link: {config.ci_repo_link} (not enough path segments)")
-        except Exception as e:
-            logger.error(f"Error parsing repo link '{config.ci_repo_link}': {e}", exc_info=True)
+    # Use environment variables directly
+    config.ci_repo_owner = os.getenv("DRONE_REPO_OWNER")
+    config.ci_repo_name = os.getenv("DRONE_REPO_NAME")
+    config.ci_repo_link = os.getenv("DRONE_REPO_LINK")
+    
+    # Log repository info
+    if config.ci_repo_owner and config.ci_repo_name:
+        logger.info(f"Repository info: {config.ci_repo_owner}/{config.ci_repo_name}")
     
     if not config.ci_repo_owner or not config.ci_repo_name:
          # Fallback to direct DRONE variables if parsing failed
@@ -327,13 +312,13 @@ async def review_pr(config: PluginConfig, scm_client: BaseSCMClient, llm_reviewe
         logger.debug(f"Retrieved diff text (first 1000 chars):\n{diff_text[:1000]}")
 
     # Parse diff
-    parsed_diff_files: List[DiffFile] = parse_diff_text(diff_text)
-    if not parsed_diff_files:
+    config.diff_files = parse_diff_text(diff_text)
+    if not config.diff_files:
         logger.info("No reviewable files found after parsing diff. Skipping review.")
         return True
 
     # Filter files based on include/exclude patterns
-    display_paths = [file.display_path for file in parsed_diff_files if file.display_path]
+    display_paths = [file.display_path for file in config.diff_files if file.display_path]
     
     filtered_paths = filter_files_by_patterns(
         display_paths,
@@ -342,20 +327,25 @@ async def review_pr(config: PluginConfig, scm_client: BaseSCMClient, llm_reviewe
     )
     
     final_files_to_review = [
-        file for file in parsed_diff_files 
+        file for file in config.diff_files 
         if file.display_path and file.display_path in filtered_paths
     ]
     
     if filtered_paths:
         logger.info(f"Found {len(filtered_paths)} files to review after filtering.")
         logger.info(f"Included files: {filtered_paths}")
+    # Process each file
+    review_tasks = []  # Initialize list to store review tasks
+    all_review_comments = []  # Initialize list to store all review comments
+    
     for diff_file in final_files_to_review:
-        if not diff_file.display_path: # Should not happen if parsed correctly
-            continue
         logger.info(f"Processing file for review: {diff_file.display_path}")
+        
+        # Process each chunk in the file
         for chunk_idx, chunk in enumerate(diff_file.chunks):
-            logger.info(f"  Reviewing chunk {chunk_idx + 1}/{len(diff_file.chunks)} (header: {chunk.header.strip()})")
-            # Create an async task for each chunk review
+            logger.info(f"  Reviewing chunk {chunk_idx+1}/{len(diff_file.chunks)} (header: {chunk.header.strip()})")
+            
+            # Create review task for this chunk
             task = llm_reviewer.get_review_for_chunk(
                 file_path=diff_file.display_path,
                 diff_chunk_content=chunk.content_for_llm

@@ -5,7 +5,7 @@ Your goal is to identify potential issues and suggest improvements.
 Instructions for your response:
 1.  Output Format: Respond strictly in the following JSON format:
     {"reviews": [{"lineNumber": <line_number_in_file>, "reviewComment": "<your_review_comment_in_markdown>"}]}
-    - `lineNumber`: An integer representing the line number in the *new version of the file* where the suggested change or issue is located. This should correspond to a line that was added or modified (a line starting with '+' in the diff).
+    - `lineNumber`: An integer representing the line number within the diff chunk (1-based). This should correspond to a line that was added or modified (a line starting with '+' in the diff). For example, if you see '+' in line 4 of the diff chunk, use lineNumber: 4.
     - `reviewComment`: Your concise feedback or suggestion, formatted in GitHub Markdown. Ensure any code examples within your comment are properly formatted in Markdown code blocks.
 
 2.  Review Focus:

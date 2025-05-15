@@ -1,6 +1,7 @@
 # src/drone_ai_pr_reviewer/scm_client.py
 import logging
 import requests # Using requests library for HTTP calls
+import json
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -218,38 +219,35 @@ class BaseSCMClient:
             file_path = comment.file_path
             line_number = comment.line_number
             
-            # Find the DiffFile that contains this file
+            # Find the diff file containing the line
             diff_file = next((f for f in self.config.diff_files if f.new_path == file_path), None)
             if not diff_file:
-                logger.warning(f"Could not find diff file for path: {file_path}")
+                logger.warning(f"Could not find diff file for {file_path}")
                 continue
-                
-            # Find the correct hunk that contains this line
-            correct_hunk = None
-            for hunk_mapping in diff_file.hunk_line_mappings:
-                if line_number in hunk_mapping:
-                    correct_hunk = hunk_mapping
+
+            # Find the chunk containing the line
+            for chunk in diff_file.chunks:
+                # The line number is relative to the chunk, so we can use it directly
+                if line_number <= len(chunk.changes):
+                    # Convert line number to position in diff
+                    position = line_number
                     break
-            
-            if not correct_hunk:
-                logger.warning(f"Could not find hunk containing line {line_number} in file {file_path}")
+            else:
+                logger.warning(f"Could not find chunk containing line {line_number} in file {file_path}")
                 continue
                 
-            # Get the diff-relative line number from the mapping
-            _, diff_line_number = correct_hunk[line_number]
-            
             review_comments_payload.append({
                 "path": file_path,
                 "body": comment.body,
-                "line": diff_line_number, # Now using the correct diff-relative line number
-                "side": "RIGHT" # For comments on added lines
+                "position": position,  # GitHub API expects position relative to the diff
             })
 
         payload = {
             "commit_id": self.config.ci_head_sha, # The SHA of the PR head to associate review with
-            "event": "COMMENT", # Or "REQUEST_CHANGES", "APPROVE"
-            "body": "AI Code Reviewer suggestions:", # Optional overall review body
-            "comments": review_comments_payload
+            "event": "COMMENT",  # Could be APPROVE, REQUEST_CHANGES, etc.
+            "body": "AI Code Reviewer suggestions:",
+            "comments": review_comments_payload,
+            "head_sha": self.config.ci_head_sha  # Required for draft reviews
         }
         
         logger.info(f"Posting {len(comments)} review comments to PR #{self.config.ci_pr_number}.")
