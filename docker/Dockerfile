@@ -23,7 +23,6 @@ WORKDIR /app
 # Copy requirements first to leverage Docker layer caching for dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install unidiff==0.7.5 && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code
