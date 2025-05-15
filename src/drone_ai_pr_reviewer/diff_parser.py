@@ -1,13 +1,35 @@
 # src/drone_ai_pr_reviewer/diff_parser.py
 import logging
+import subprocess
 from typing import List, Optional, Dict, Tuple
-from unidiff import PatchSet, LINE_TYPE_ADDED, LINE_TYPE_REMOVED, LINE_TYPE_CONTEXT
-
+from .utils.file_filter import filter_files_by_patterns
 from .models import DiffFile, DiffChunk
 
 logger = logging.getLogger(__name__)
 
-def parse_diff_text(diff_text: str) -> List[DiffFile]:
+def get_git_diff(base_sha: str, head_sha: str, cwd: Optional[str] = None) -> str:
+    """Get diff between two git commits.
+
+    Args:
+        base_sha: Base commit SHA
+        head_sha: Head commit SHA
+        cwd: Working directory for git command
+
+    Returns:
+        str: Git diff output
+
+    Raises:
+        subprocess.CalledProcessError: If git command fails
+    """
+    cmd = ["git", "diff", "-U0", base_sha, head_sha]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=cwd)
+    return result.stdout
+
+def parse_diff_text(
+    diff_text: str,
+    exclude_patterns: Optional[List[str]] = None,
+    include_patterns: Optional[List[str]] = None
+) -> List[DiffFile]:
     """
     Parses raw diff text (e.g., from git diff or SCM API) into a list of DiffFile objects.
 
@@ -18,27 +40,112 @@ def parse_diff_text(diff_text: str) -> List[DiffFile]:
         A list of DiffFile objects representing the parsed diff.
     """
     if not diff_text:
-        logger.info("Received empty diff text, returning no parsed files.")
         return []
 
-    parsed_files: List[DiffFile] = []
-    try:
-        # unidiff expects bytes or a file-like object, ensure diff_text is string
-        # If diff_text is already a string, PatchSet(diff_text) should work.
-        # If it needs to be file-like, io.StringIO can be used.
-        patch_set = PatchSet(diff_text)
-    except Exception as e:
-        logger.error(f"Failed to parse diff text with unidiff: {e}", exc_info=True)
-        # Log a snippet of the diff text for debugging, be careful with sensitive info
-        logger.debug(f"Problematic diff text (first 500 chars): {diff_text[:500]}")
+    if not diff_text or diff_text.isspace():
+        logger.debug("Received empty diff text, returning no parsed files.")
         return []
 
-    for patched_file in patch_set:
+    # Process the diff text
+    result = []
+    current_file = None
+    current_chunk = None
+    current_hunk_line = 0
+    current_diff_line = 0
+    
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git"):
+            # Add the last file if it exists
+            if current_file and current_chunk:
+                current_file.chunks.append(current_chunk)
+                current_file.hunk_line_mappings.append(current_chunk.hunk_line_mapping)
+                result.append(current_file)
+            
+            paths = line.split()[2:4]  # Get the paths from "diff --git a/path b/path"
+            display_path = paths[1].split("b/")[1] if len(paths) > 1 else None
+            
+            # Skip if file doesn't match patterns
+            if not display_path or not filter_files_by_patterns([display_path], include_patterns, exclude_patterns):
+                current_file = None
+                current_chunk = None
+                continue
+                
+            current_file = DiffFile(
+                old_path=paths[0].split('a/')[1] if len(paths) > 0 else None,
+                new_path=paths[1].split('b/')[1] if len(paths) > 1 else None,
+                chunks=[],
+                hunk_line_mappings=[]
+            )
+            current_chunk = None
+            current_hunk_line = 0
+            current_diff_line = 0
+            
+        elif line.startswith("@@") and current_file:
+            # New hunk section
+            if current_chunk:
+                current_file.chunks.append(current_chunk)
+                current_file.hunk_line_mappings.append(current_chunk.hunk_line_mapping)
+            
+            current_chunk = DiffChunk(
+                content="",  # Will be built as we process lines
+                changes=[],  # Will be built as we process lines
+                hunk_line_mapping={}
+            )
+            current_hunk_line = 1
+            current_diff_line = 1
+            
+        elif line.startswith("+") and current_chunk:
+            # Added line
+            current_chunk.content += line + "\n"
+            current_chunk.changes.append({
+                "type": "add",
+                "content": line[1:],
+                "line_number": current_hunk_line
+            })
+            current_chunk.hunk_line_mapping[current_hunk_line] = (current_hunk_line, current_diff_line)
+            current_hunk_line += 1
+            current_diff_line += 1
+            
+        elif line.startswith("-") and current_chunk:
+            # Removed line
+            current_chunk.content += line + "\n"
+            current_chunk.changes.append({
+                "type": "remove",
+                "content": line[1:],
+                "line_number": current_diff_line
+            })
+            current_diff_line += 1
+            
+        elif line.startswith(" ") and current_chunk:
+            # Context line
+            current_chunk.content += line + "\n"
+            current_chunk.changes.append({
+                "type": "context",
+                "content": line[1:],
+                "line_number": current_hunk_line
+            })
+            current_chunk.hunk_line_mapping[current_hunk_line] = (current_hunk_line, current_diff_line)
+            current_hunk_line += 1
+            current_diff_line += 1
+            
+    # Add the last file if it exists
+    if current_file and current_chunk:
+        current_file.chunks.append(current_chunk)
+        result.append(current_file)
+    
+    return result
+    
+    # Only process files that match the patterns
+    filtered_files = [file for file in patch_set if file.path in filtered_paths]
+    
+    # Process each file
+    result = []
+    for patched_file in filtered_files:
         # Skip files that are only in the diff due to mode changes but no content change
         if not patched_file.is_removed_file and \
            not patched_file.is_added_file and \
            not patched_file.is_modified_file and \
-           not patched_file.is_renamed_file: # Check if unidiff has is_renamed_file or similar
+           not patched_file.is_renamed_file: 
             logger.debug(f"Skipping file with no content changes (e.g. mode only): {patched_file.source_file} -> {patched_file.target_file}")
             continue
         
@@ -89,26 +196,22 @@ def parse_diff_text(diff_text: str) -> List[DiffFile]:
             # We need to replicate this formatting.
             
             # Track line numbers for mapping
-            hunk_line_mapping: Dict[int, Tuple[int, int]] = {}  # Maps target line number to (hunk_line_number, diff_line_number)
-            current_hunk_line = 1  # Line number within the hunk
-            current_diff_line = 1  # Line number in the diff (for SCM API)
+            current_chunk.hunk_line_mapping = {}
+            target_line = 1  # Line number in the target file
+            source_line = 1  # Line number in the source file
+            diff_line = 1  # Line number in the diff
 
-            for line in hunk:
-                if line.target_line_no is not None:  # Only track lines in the new file
-                    hunk_line_mapping[line.target_line_no] = (current_hunk_line, current_diff_line)
-                    
-                # Increment line numbers based on line type
-                if line.line_type == LINE_TYPE_CONTEXT:
-                    current_hunk_line += 1
-                    current_diff_line += 1
-                elif line.line_type == LINE_TYPE_ADDED:
-                    current_hunk_line += 1
-                    current_diff_line += 1
-                elif line.line_type == LINE_TYPE_REMOVED:
-                    current_diff_line += 1
+            # Add line numbers for each line in the chunk
+            for change in current_chunk.changes:
+                if change["type"] in ["add", "context"]:
+                    current_chunk.hunk_line_mapping[target_line] = (target_line, diff_line)
+                    target_line += 1
+                elif change["type"] == "remove":
+                    source_line += 1
+                diff_line += 1
 
             # Store the line mapping for this hunk
-            diff_file_model.hunk_line_mappings.append(hunk_line_mapping)
+            diff_file_model.hunk_line_mappings.append(current_chunk.hunk_line_mapping)
 
             # Add the hunk to the DiffFile
             diff_file_model.chunks.append(DiffChunk(
