@@ -148,6 +148,12 @@ def populate_ci_environment_info(config: PluginConfig, scm_client: BaseSCMClient
     logger.info("Populating CI environment information into config...")
     config.ci_system = "drone" # Assuming Drone CI for now
 
+    # --- Repository Info (needed for SCM API calls) ---
+    config.ci_repo_owner = os.getenv("DRONE_REPO_OWNER")
+    config.ci_repo_name = os.getenv("DRONE_REPO_NAME")
+    config.ci_repo_link = os.getenv("DRONE_REPO_LINK")
+    logger.info(f"Repository info: {config.ci_repo_owner}/{config.ci_repo_name}")
+
     # --- Event Type ---
     config.ci_event_name = os.getenv("DRONE_BUILD_EVENT")
     pr_number_str = os.getenv("DRONE_PULL_REQUEST")
@@ -188,22 +194,28 @@ def populate_ci_environment_info(config: PluginConfig, scm_client: BaseSCMClient
         config.is_pr_event = False
         return
         
-    # --- Determine Event Action and Base SHA ---
+    # --- PR Event Handling ---
     if config.ci_event_name == "pull_request":
         config.is_pr_opened_event = True
         config.ci_event_action = "opened" # Or "reopened", etc. Drone might have more specific var.
-        # For opened PRs, we need to get the base SHA from the target branch
+        # For opened PRs, we need to fetch the target branch HEAD SHA
+        # as DRONE_COMMIT_BEFORE may not be set
         config.ci_target_branch = os.getenv("DRONE_TARGET_BRANCH")
-        if config.ci_target_branch:
-            fetched_base_sha = scm_client.get_target_branch_head_sha()
-            if fetched_base_sha:
-                config.ci_base_sha = fetched_base_sha
-            else:
-                logger.error(f"Failed to fetch head SHA for target branch '{config.ci_target_branch}'. Cannot determine diff base.")
-                config.is_pr_event = False
-                return
-        else:
+        if not config.ci_target_branch:
             logger.error("DRONE_TARGET_BRANCH not set, cannot fetch base SHA for opened PR.")
+            config.is_pr_event = False
+            return
+
+        if not config.ci_repo_owner or not config.ci_repo_name:
+            logger.error("DRONE_REPO_OWNER or DRONE_REPO_NAME not set, cannot fetch base SHA for opened PR.")
+            config.is_pr_event = False
+            return
+
+        fetched_base_sha = scm_client.get_target_branch_head_sha()
+        if fetched_base_sha:
+            config.ci_base_sha = fetched_base_sha
+        else:
+            logger.error(f"Failed to fetch head SHA for target branch '{config.ci_target_branch}'. Cannot determine diff base.")
             config.is_pr_event = False
             return
 
