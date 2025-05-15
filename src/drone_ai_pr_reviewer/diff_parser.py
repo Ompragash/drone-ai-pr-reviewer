@@ -87,9 +87,12 @@ def parse_diff_text(
                 current_file.chunks.append(current_chunk)
                 current_file.hunk_line_mappings.append(current_chunk.hunk_line_mapping)
             
+            # Extract header from the hunk line
+            header = line if line.startswith("@@") else ""
             current_chunk = DiffChunk(
-                content="",  # Will be built as we process lines
-                changes=[],  # Will be built as we process lines
+                content=header + "\n",  # Start with header
+                changes=[],
+                header=header,
                 hunk_line_mapping={}
             )
             current_hunk_line = 1
@@ -101,7 +104,8 @@ def parse_diff_text(
             current_chunk.changes.append({
                 "type": "add",
                 "content": line[1:],
-                "line_number": current_hunk_line
+                "ln": current_hunk_line,
+                "ln2": None
             })
             current_chunk.hunk_line_mapping[current_hunk_line] = (current_hunk_line, current_diff_line)
             current_hunk_line += 1
@@ -113,7 +117,8 @@ def parse_diff_text(
             current_chunk.changes.append({
                 "type": "remove",
                 "content": line[1:],
-                "line_number": current_diff_line
+                "ln": None,
+                "ln2": current_hunk_line
             })
             current_diff_line += 1
             
@@ -123,7 +128,8 @@ def parse_diff_text(
             current_chunk.changes.append({
                 "type": "context",
                 "content": line[1:],
-                "line_number": current_hunk_line
+                "ln": current_hunk_line,
+                "ln2": current_hunk_line
             })
             current_chunk.hunk_line_mapping[current_hunk_line] = (current_hunk_line, current_diff_line)
             current_hunk_line += 1
