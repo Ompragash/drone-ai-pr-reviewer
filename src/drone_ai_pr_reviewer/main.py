@@ -13,7 +13,7 @@ from .llm_reviewer import LLMReviewer
 from .scm_client import BaseSCMClient # Using BaseSCMClient for now
 from .diff_parser import parse_diff_text
 from .models import ReviewComment, DiffFile # Import DiffFile for type hinting
-import minimatch # For exclude patterns
+from glob2 import glob # For exclude patterns
 
 # Global logger for the module
 logger = logging.getLogger("drone_ai_pr_reviewer") # Use a named logger
@@ -166,9 +166,24 @@ def populate_ci_environment_info(config: PluginConfig, scm_client: BaseSCMClient
         return
 
     # --- SHAs ---
+    # Get head SHA from various possible sources
     config.ci_head_sha = os.getenv("DRONE_COMMIT_SHA") or os.getenv("DRONE_COMMIT") or os.getenv("DRONE_COMMIT_AFTER")
     if not config.ci_head_sha:
         logger.error("Could not determine head SHA (DRONE_COMMIT_SHA / DRONE_COMMIT / DRONE_COMMIT_AFTER missing).")
+        config.is_pr_event = False
+        return
+        
+    # Validate SHA format
+    if not config.ci_head_sha or len(config.ci_head_sha) != 40 or not all(c in '0123456789abcdef' for c in config.ci_head_sha.lower()):
+        logger.error(f"Invalid head SHA format: {config.ci_head_sha}. Expected 40 hex characters.")
+        config.is_pr_event = False
+        return
+        
+    # --- Determine Event Action and Base SHA ---
+    # Get event name and validate
+    config.ci_event_name = os.getenv("DRONE_BUILD_EVENT")
+    if not config.ci_event_name:
+        logger.error("DRONE_BUILD_EVENT is not set")
         config.is_pr_event = False
         return
         
@@ -176,30 +191,26 @@ def populate_ci_environment_info(config: PluginConfig, scm_client: BaseSCMClient
     if config.ci_event_name == "pull_request":
         config.is_pr_opened_event = True
         config.ci_event_action = "opened" # Or "reopened", etc. Drone might have more specific var.
-        config.ci_base_sha = os.getenv("DRONE_PULL_REQUEST_BASE_SHA")
-        if not config.ci_base_sha:
-            logger.info("DRONE_PULL_REQUEST_BASE_SHA not found for 'opened' PR. Attempting to fetch target branch head.")
-            # Target branch name is needed for this
-            config.ci_target_branch = os.getenv("DRONE_TARGET_BRANCH")
-            if config.ci_target_branch:
-                fetched_base_sha = scm_client.get_target_branch_head_sha() # API call
-                if fetched_base_sha:
-                    config.ci_base_sha = fetched_base_sha
-                else:
-                    logger.error(f"Failed to fetch head SHA for target branch '{config.ci_target_branch}'. Cannot determine diff base.")
-                    config.is_pr_event = False
-                    return
+        # For opened PRs, we need to get the base SHA from the target branch
+        config.ci_target_branch = os.getenv("DRONE_TARGET_BRANCH")
+        if config.ci_target_branch:
+            fetched_base_sha = scm_client.get_target_branch_head_sha()
+            if fetched_base_sha:
+                config.ci_base_sha = fetched_base_sha
             else:
-                logger.error("DRONE_TARGET_BRANCH not set, cannot fetch base SHA for opened PR.")
+                logger.error(f"Failed to fetch head SHA for target branch '{config.ci_target_branch}'. Cannot determine diff base.")
                 config.is_pr_event = False
                 return
+        else:
+            logger.error("DRONE_TARGET_BRANCH not set, cannot fetch base SHA for opened PR.")
+            config.is_pr_event = False
+            return
 
     elif config.ci_event_name == "push" and config.is_pr_event: # is_pr_event checks DRONE_PULL_REQUEST
         config.is_pr_synchronize_event = True
         config.ci_event_action = "synchronize"
         config.ci_base_sha = os.getenv("DRONE_COMMIT_BEFORE")
-        if not config.ci_base_sha or config.ci_base_sha == "0000000000000000000000000000000000000000":
-            logger.error(f"DRONE_COMMIT_BEFORE is missing or null for 'push' (synchronize) event on PR #{config.ci_pr_number}.")
+            logger.error(f"Invalid base SHA: {config.ci_base_sha}. Expected 40 hex characters.")
             config.is_pr_event = False
             return
         if config.ci_base_sha == config.ci_head_sha:
