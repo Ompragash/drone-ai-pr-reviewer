@@ -13,7 +13,7 @@ from .llm_reviewer import LLMReviewer
 from .scm_client import BaseSCMClient # Using BaseSCMClient for now
 from .diff_parser import parse_diff_text
 from .models import ReviewComment, DiffFile # Import DiffFile for type hinting
-from glob2 import glob # For exclude patterns
+from pathspec import PathSpec # For git-style pattern matching
 
 # Global logger for the module
 logger = logging.getLogger("drone_ai_pr_reviewer") # Use a named logger
@@ -320,19 +320,12 @@ async def review_pr(config: PluginConfig, scm_client: BaseSCMClient, llm_reviewe
 
     # Filter files based on exclude patterns
     final_files_to_review: List[DiffFile] = []
+    
     if config.exclude_patterns:
-        logger.info(f"Applying exclude patterns: {config.exclude_patterns}")
-        for diff_file in parsed_diff_files:
-            if diff_file.display_path and \
-               not any(minimatch.match(diff_file.display_path, pattern) for pattern in config.exclude_patterns):
-                final_files_to_review.append(diff_file)
-            elif diff_file.display_path:
-                logger.info(f"Excluding file due to pattern match: {diff_file.display_path}")
-        if not final_files_to_review and parsed_diff_files:
-            logger.info("All files excluded by patterns. Nothing to review.")
-            return True
+        # Create a PathSpec from the exclude patterns
+        spec = PathSpec.from_lines('gitwildmatch', config.exclude_patterns)
     else:
-        final_files_to_review = parsed_diff_files
+        spec = None
     
     logger.info(f"Found {len(final_files_to_review)} files to review after filtering.")
 

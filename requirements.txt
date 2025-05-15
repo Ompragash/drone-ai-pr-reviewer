@@ -12,8 +12,8 @@ requests >= 2.25.0
 # For loading .env files during local development
 python-dotenv >= 0.15.0
 
-# For matching glob patterns (exclude patterns)
-python-glob2 >= 0.7.0 
+# For matching git patterns (exclude patterns)
+pathspec >= 0.11.0 
 
 # Optional: For robust data validation and settings management (if you choose to use it more extensively)
 # pydantic >= 2.0.0
