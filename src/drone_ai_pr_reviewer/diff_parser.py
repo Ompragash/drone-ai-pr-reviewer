@@ -1,8 +1,7 @@
 # src/drone_ai_pr_reviewer/diff_parser.py
 import logging
 from typing import List, Optional, Dict, Tuple
-from unidiff import PatchSet
-from unidiff.patch import LineType
+from unidiff import PatchSet, LINE_TYPE_ADDED, LINE_TYPE_REMOVED, LINE_TYPE_CONTEXT
 
 from .models import DiffFile, DiffChunk
 
@@ -95,17 +94,17 @@ def parse_diff_text(diff_text: str) -> List[DiffFile]:
             current_diff_line = 1  # Line number in the diff (for SCM API)
 
             for line in hunk:
-                if line.target_line is not None:  # Only track lines in the new file
-                    hunk_line_mapping[line.target_line] = (current_hunk_line, current_diff_line)
+                if line.target_line_no is not None:  # Only track lines in the new file
+                    hunk_line_mapping[line.target_line_no] = (current_hunk_line, current_diff_line)
                     
                 # Increment line numbers based on line type
-                if line.is_context:
+                if line.line_type == LINE_TYPE_CONTEXT:
                     current_hunk_line += 1
                     current_diff_line += 1
-                elif line.is_added:
+                elif line.line_type == LINE_TYPE_ADDED:
                     current_hunk_line += 1
                     current_diff_line += 1
-                elif line.is_removed:
+                elif line.line_type == LINE_TYPE_REMOVED:
                     current_diff_line += 1
 
             # Store the line mapping for this hunk
