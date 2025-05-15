@@ -24,7 +24,14 @@
 ## GitHub Actions AI Code Reviewer Comparison
 
 ### What They Do Better
-1. **Diff Handling**
+1. **Code Suggestions**
+   - Provides inline code suggestions
+   - Uses GitHub's suggestion blocks
+   - One-click apply suggestions
+   - Context-aware fixes
+   - Automated code improvements
+
+2. **Diff Handling**
    - Binary file support
    - Complex rename detection
    - Special characters in filenames
@@ -63,7 +70,10 @@
 - [ ] Implement review batching
 - [ ] Support file-level comments
 - [ ] Add review summary generation
-- [ ] Support suggested fixes
+- [ ] Add code suggestions feature
+  - [ ] Implement suggestion blocks
+  - [ ] Add context-aware fixes
+  - [ ] Support one-click apply via SCM API
 
 ### Phase 4: Advanced Features
 - [ ] Add support for multiple SCM providers
