@@ -4,6 +4,7 @@ import sys
 import asyncio # For running async LLM calls
 import logging
 import subprocess # For git commands
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 from dotenv import load_dotenv # For local development using .env file
 
