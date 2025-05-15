@@ -210,6 +210,7 @@ def populate_ci_environment_info(config: PluginConfig, scm_client: BaseSCMClient
         config.is_pr_synchronize_event = True
         config.ci_event_action = "synchronize"
         config.ci_base_sha = os.getenv("DRONE_COMMIT_BEFORE")
+        if not config.ci_base_sha or config.ci_base_sha == "0000000000000000000000000000000000000000":
             logger.error(f"Invalid base SHA: {config.ci_base_sha}. Expected 40 hex characters.")
             config.is_pr_event = False
             return
