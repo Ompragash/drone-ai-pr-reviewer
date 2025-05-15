@@ -21,6 +21,20 @@ class DiffChunk:
     header: str # The hunk header line (e.g., @@ -1,7 +1,7 @@)
     hunk_line_mapping: Dict[int, Tuple[int, int]] = field(default_factory=dict) # Maps target line numbers to (hunk_line_number, diff_line_number)
 
+    @property
+    def content_for_llm(self) -> str:
+        """Format the chunk content for LLM review."""
+        lines = []
+        if self.header:
+            lines.append(self.header)
+        
+        for change in self.changes:
+            line_num = change.get('ln') or change.get('ln2') or ''
+            content = change.get('content', '')
+            lines.append(f"{line_num} {content}")
+        
+        return '\n'.join(lines)
+
 @dataclass
 class DiffFile:
     """
