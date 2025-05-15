@@ -72,6 +72,11 @@ class PluginConfig:
             p.strip() for p in os.getenv("PLUGIN_EXCLUDE_PATTERNS", DEFAULT_EXCLUDE_PATTERNS).split(',') if p.strip()
         ]
     )
+    include_patterns: List[str] = field(
+        default_factory=lambda: [
+            p.strip() for p in os.getenv("PLUGIN_INCLUDE_PATTERNS", "").split(',') if p.strip()
+        ]
+    )
     log_level: str = field(
         default_factory=lambda: os.getenv("PLUGIN_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
     )

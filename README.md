@@ -75,8 +75,16 @@ The plugin is configured via environment variables prefixed with `PLUGIN_`.
 | `PLUGIN_VERTEXAI_LOCATION`      | Google Cloud region for Vertex AI (e.g., `"us-central1"`).                                                                                     | Required for Vertex AI (if not ADC) |
 | `PLUGIN_AWS_REGION_NAME`        | AWS region for Bedrock (e.g., `"us-east-1"`).                                                                                                  | Optional (usually from SDK config) |
 | **Plugin Behavior**             |                                                                                                                                                |                                   |
-| `PLUGIN_EXCLUDE_PATTERNS`       | Comma-separated list of glob patterns for files/paths to exclude (e.g., `"*.json,dist/**"`).                                                   | Default: `""` (none)              |
+| `PLUGIN_INCLUDE_PATTERNS`       | Comma-separated list of git-style patterns for files/paths to include (e.g., `"src/*.py,docs/**"`). Takes precedence over exclude patterns.    | Default: `""` (all files)        |
+| `PLUGIN_EXCLUDE_PATTERNS`       | Comma-separated list of git-style patterns for files/paths to exclude (e.g., `"*.json,dist/**"`).                                               | Default: `""` (none)              |
 | `PLUGIN_LOG_LEVEL`              | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).                                                                               | Default: `INFO`                   |
+
+### Pattern Matching Notes
+- Both include and exclude patterns use git-style pattern matching (e.g., `**/*.py`, `src/*`, `!exclude.txt`)
+- Include patterns take precedence over exclude patterns
+- If no include patterns are specified, all files are considered for review
+- If no exclude patterns are specified, no files are excluded
+- Patterns support wildcards (`*`), double wildcards (`**`), and negation (`!`)
 
 *\* `PLUGIN_LLM_API_KEY` is not required for local models like Ollama that are configured without an API key.*
 
