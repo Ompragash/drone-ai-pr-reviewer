@@ -4,7 +4,7 @@
 litellm >= 1.30.0 # Specify a recent version known to work well
 
 # For parsing diffs
-unidiff >= 0.7.0
+unidiff==0.7.5
 
 # For making HTTP requests (used by scm_client)
 requests >= 2.25.0
